@@ -1,16 +1,16 @@
 # pylint: skip-file
-"""
-Tests for worker task processing.
-"""
+"""Tests for worker.process_one."""
 
-import numpy as np
 from unittest.mock import MagicMock, patch
+import numpy as np
 from app.worker import process_one
 
 
-@patch("app.worker.extract_features", return_value=np.ones(26))
-@patch("app.worker._read_gridfs_audio", return_value=(np.ones(22050), 22050))
-def test_process_one_with_task(mock_read, mock_extract):
+@patch("app.worker.extract_features")
+@patch("app.worker.read_audio_file")
+def test_process_one_success(mock_read_func, mock_extract_func):
+    """Test that process_one processes one task and stores a result."""
+
     db = MagicMock()
     db.tasks.find_one_and_update.return_value = {
         "_id": "task1",
@@ -19,10 +19,12 @@ def test_process_one_with_task(mock_read, mock_extract):
     }
 
     db.reference_tracks.find.return_value = [
-        {"genre": "rock", "fp": np.ones(26).tolist()}
+        {"genre": "vocal", "fp": np.ones(26).tolist()}
     ]
 
-    db.results.insert_one.return_value = True
+    mock_read_func.return_value = (np.ones(22050), 22050)
+    mock_extract_func.return_value = np.ones(26)
+
     fs = MagicMock()
 
     result = process_one(db, fs)
@@ -32,10 +34,13 @@ def test_process_one_with_task(mock_read, mock_extract):
 
 
 def test_process_one_no_task():
+    """Test that process_one returns False when no pending task is available."""
     db = MagicMock()
     db.tasks.find_one_and_update.return_value = None
     fs = MagicMock()
 
     result = process_one(db, fs)
     assert result is False
+
+
 
