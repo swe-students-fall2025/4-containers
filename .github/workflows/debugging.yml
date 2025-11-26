@@ -1,4 +1,4 @@
-name: Dump github data
+name: Dump github data in PR
 
 on:
   push:
