@@ -15,3 +15,7 @@ jobs:
       - name: Print GitHub event JSON
         run: |
           echo '${{ toJson(github) }}' | jq .
+      - name: Print GitHub select data
+        run: |
+          echo 'repo,branch,actor,pusher,sender'
+          echo '${{github.repository}},${{github.ref_type}} ${{github.ref_name}},${{github.actor}},${{github.event.pusher.name}},${{github.event.sender.login}}'
