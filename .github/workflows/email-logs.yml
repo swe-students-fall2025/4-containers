@@ -1,0 +1,167 @@
+name: Append contribution log
+
+on:
+  push:
+    branches: ["test"]
+  pull_request:
+    branches: ["test"]
+
+permissions:
+  contents: write
+
+jobs:
+  update-contribution-log:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gather contributions and append CSV
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF: ${{ github.ref }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, sys, shlex, pathlib
+
+          event_path = os.environ.get("GITHUB_EVENT_PATH")
+          event_name = os.environ.get("GITHUB_EVENT_NAME")
+          sha = os.environ.get("GITHUB_SHA")
+          ref = os.environ.get("GITHUB_REF")
+
+          # Determine range to analyze
+          def git(cmd):
+              return subprocess.check_output(shlex.split(cmd), text=True)
+
+          if event_name == "pull_request":
+              ev = json.load(open(event_path))
+              base = ev["pull_request"]["base"]["sha"]
+              head = ev["pull_request"]["head"]["sha"]
+              pr_user = ev["pull_request"]["user"]["login"]
+              pr_count_flag = 1
+              rng = f"{base}..{head}"
+              target_branch = ev["pull_request"]["base"]["ref"]
+          else:
+              ev = json.load(open(event_path)) if event_path and os.path.exists(event_path) else {}
+              before = ev.get("before")
+              after = sha
+              pr_user = None
+              pr_count_flag = 0
+              if before:
+                  rng = f"{before}..{after}"
+              else:
+                  # fallback to single commit
+                  rng = after
+              # derive branch from GITHUB_REF like refs/heads/test
+              target_branch = ref.replace("refs/heads/","") if ref else "test"
+
+          # Run git log to get commits + numstat
+          # Format: a separator line with commit hash and author name/email, then numstat lines
+          cmd = f'git --no-pager log --no-merges --pretty=format:"==%H|%an|%ae" --numstat {rng}'
+          try:
+              out = git(cmd)
+          except subprocess.CalledProcessError as e:
+              # no commits in range -> produce PR author entry only (if PR) and exit
+              out = ""
+
+          users = {}  # key -> stats dict
+          # stats: commits, files_set, added, deleted, prs
+
+          current_author = None
+          for line in out.splitlines():
+              if line.startswith("=="):
+                  # commit header
+                  _, rest = line.split("==",1)
+                  parts = rest.split("|")
+                  if len(parts) >= 3:
+                      commit_hash, author_name, author_email = parts[0], parts[1], parts[2]
+                  else:
+                      commit_hash = parts[0]
+                      author_name = parts[1] if len(parts)>1 else "unknown"
+                      author_email = parts[2] if len(parts)>2 else ""
+                  key = author_email.strip() or author_name.strip()
+                  if not key:
+                      key = commit_hash  # fallback (shouldn't happen)
+                  if key not in users:
+                      users[key] = {"commits":0,"files":set(),"added":0,"deleted":0,"prs":0}
+                  users[key]["commits"] += 1
+                  current_author = key
+              elif line.strip() == "":
+                  continue
+              else:
+                  # numstat line: added \t deleted \t filename
+                  parts = line.split("\t")
+                  if len(parts) >= 3 and current_author is not None:
+                      added_s, deleted_s, filename = parts[0], parts[1], parts[2]
+                      try:
+                          added = int(added_s) if added_s != "-" else 0
+                      except:
+                          added = 0
+                      try:
+                          deleted = int(deleted_s) if deleted_s != "-" else 0
+                      except:
+                          deleted = 0
+                      users[current_author]["added"] += added
+                      users[current_author]["deleted"] += deleted
+                      users[current_author]["files"].add(filename)
+
+          # Ensure PR author counted (PRs = 1) for pull_request events
+          if pr_user:
+              key = f"gh:{pr_user}"
+              if key not in users:
+                  users[key] = {"commits":0,"files":set(),"added":0,"deleted":0,"prs":1}
+              else:
+                  users[key]["prs"] += 1
+
+          # Prepare CSV path
+          csv_path = pathlib.Path("contribution-log.csv")
+          header = "user,commits,files_modified,lines_added,lines_deleted,pull_requests\n"
+          if not csv_path.exists():
+              csv_path.write_text(header)
+
+          # Append one line per user
+          with csv_path.open("a", encoding="utf-8") as f:
+              for user_key, stats in users.items():
+                  line = ",".join([
+                      '"' + user_key.replace('"','""') + '"',
+                      str(stats["commits"]),
+                      str(len(stats["files"])),
+                      str(stats["added"]),
+                      str(stats["deleted"]),
+                      str(stats["prs"])
+                  ])
+                  f.write(line + "\n")
+
+          # Print summary for logs
+          print(f"Wrote {len(users)} user lines to {csv_path}")
+          # Exit
+          PY
+
+      - name: Commit and push CSV if changed
+        env:
+          TARGET_BRANCH: ${{ github.event.pull_request.base.ref || github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Ensure we are on a writable branch
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+              # In PR context, push to base branch
+              BRANCH="${{ github.event.pull_request.base.ref }}"
+          else
+              BRANCH="${{ github.ref_name }}"
+          fi
+
+          git add contribution-log.csv || true
+          if git diff --staged --quiet; then
+              echo "No changes to commit"
+              exit 0
+          fi
+
+          git commit -m "Update contribution-log.csv (automated)"
+          # Push to the target branch
+          git push origin "HEAD:refs/heads/${BRANCH}"
