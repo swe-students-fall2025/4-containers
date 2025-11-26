@@ -19,6 +19,6 @@ jobs:
         run: |
           echo 'repo,branch,actor,pusher,sender'
           echo '${{github.repository}},${{github.ref_type}} ${{github.ref_name}},${{github.actor}},${{github.event.pusher.name}},${{github.event.sender.login}}'
-      - name: Commit data
+      - name: Print git commit data
         run: |
           echo '${{ toJson(github.event.commits) }}' | jq -r '.[] | "id: \(.id)\nmessage: \(.message)\ntimestamp: \(.timestamp)\nauthor.name: \(.author.name)\nauthor.username: \(.author.username)\ncommitter.name: \(.committer.name)\ncommitter.username: \(.committer.username)\n---"'
