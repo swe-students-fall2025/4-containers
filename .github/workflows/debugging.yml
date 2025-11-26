@@ -1,0 +1,17 @@
+name: Dump github.event
+
+on:
+  push:
+    branches:
+      - test
+  pull_request:
+    branches:
+      - test
+
+jobs:
+  dump-event:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print GitHub event JSON
+        run: |
+          echo '${{ toJson(github) }}' | jq .
