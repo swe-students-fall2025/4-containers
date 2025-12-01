@@ -39,7 +39,7 @@ docker run --name mongodb -d -p 27017:27017 mongo
 The machine learning client will be written in Python and will connect to the database using [pymongo](https://pymongo.readthedocs.io/en/stable/).
 
 - This part of the system is not visible to end-users, so does not involve a user interface... use the web app part for that.
-- The machine learning may be invoked by the interface of the web app part, or may invoke itself automatically based on external events, such as on a predetermined time-based schedule, or both.
+- The machine learning may be invoked as a result of interactions the user has with the interface of the web app part; or may invoke itself automatically based on external events, such as on a predetermined time-based schedule; or when new data has been added to the database; or some combination of these.
 - The client must collect data gathered from one or more available hardware sensors, such as camera, microphone, gps, or any additional sensors the development team has access to. This raw data can be gathered directly by the machine learning client, or passed to it from the web app part.
 - The client must do some form of high-level analysis of the data, such as image recognition, speech recognition, classification, aggregation, etc, either using custom code, third-party APIs or code libraries designed for this purpose. In other words, the client must not only collect raw data, but also must compute the results of some additional analysis of that data.
 - Metadata about the collected data, including the results of any analysis performed, must be saved to the database. How frequently the client communicates with the database must make sense for your application.
@@ -51,7 +51,11 @@ The machine learning client will be written in Python and will connect to the da
 
 ### Web app
 
-The web app allows visitors on the web to view the activity of the machine learning client and the results of its analysis.
+The web app must offer something useful or interesting for users. There must be a reason why a user would use the web app.
+
+The web app allows visitors on the web to view the activity of the machine learning client and the results of its analysis. It cannot be simply to take data and show users the result of some machine learning process without any obvious use case - it must offer something of value to the user that they cannot otherwise easily obtain.
+
+If user accounts are necessary for the web app to make sense from a user's perspective, then the web app should allow users to create accounts.
 
 The web app must be built using the Python [flask](https://palletsprojects.com/p/flask/) framework and will connect to the database via `pymongo`, with any additional modules or libraries that you would like.
 
